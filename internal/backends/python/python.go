@@ -4,7 +4,7 @@ package python
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,7 +117,7 @@ func pythonMakeBackend(name string, python string) api.LanguageBackend {
 			util.Die("Received status code: %d", res.StatusCode)
 		}
 
-		body, err := ioutil.ReadAll(res.Body)
+		body, err := io.ReadAll(res.Body)
 		if err != nil {
 			util.Die("Res body read failed with error: %s", err)
 		}
@@ -396,13 +396,27 @@ func guess(python string) (map[api.PkgName]bool, bool) {
 			// Otherwise, try and look it up in Pypi
 			var pkg string
 			var ok bool
-			pkg, ok = moduleToPypiPackageOverride[fullModname]
-			if !ok {
-				pkg, ok = moduleToPypiPackageOverride[modname]
+
+			modNameParts := strings.Split(fullModname, ".")
+			for len(modNameParts) > 0 {
+				testModName := strings.Join(modNameParts, ".")
+
+				// test overrides
+				pkg, ok = moduleToPypiPackageOverride[testModName]
+				if ok {
+					break
+				}
+
+				// test pypi
+				pkg, ok = pypiMap.ModuleToPackage(testModName)
+				if ok {
+					break
+				}
+
+				// loop with everything except the deepest submodule
+				modNameParts = modNameParts[:len(modNameParts)-1]
 			}
-			if !ok {
-				pkg, ok = pypiMap.ModuleToPackage(modname)
-			}
+
 			if ok {
 				name := api.PkgName(pkg)
 				pkgs[normalizePackageName(name)] = true
